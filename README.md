@@ -65,7 +65,7 @@ You will see a dashboard.
 - Use the Insert / Update / Delete on the page itself
 - connect first
   psql -U postgres -p 5433 -d ordersdb
-  -- Once Done then Run any Query, the Update on Brower will be Instant
+Once Done then Run any Query, the Update on Brower will be Instant
 
 ## Challenges I Faced
 
