@@ -1,8 +1,0 @@
-com\orders\RealtimeOrdersApplication.class
-com\orders\websocket\OrderController.class
-com\orders\model\Order.class
-com\orders\service\OrderService.class
-com\orders\service\PostgresListenerService.class
-com\orders\service\OrderService$OrderRowMapper.class
-com\orders\config\WebSocketConfig.class
-com\orders\model\OrderEvent.class
