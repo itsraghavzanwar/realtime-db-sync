@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Orders Dashboard</title>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      margin: 20px;
+      color: #333;
+    }
+
+    h1 {
+      margin-bottom: 20px;
+    }
+
+    .status {
+      margin-bottom: 15px;
+      padding: 10px;
+      background: white;
+      border: 1px solid #ccc;
+      width: fit-content;
+    }
+
+    .stats {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .card {
+      background: white;
+      border: 1px solid #ccc;
+      padding: 15px;
+      min-width: 120px;
+      text-align: center;
+    }
+
+    .card h2 {
+      margin: 0;
+      font-size: 28px;
+    }
+
+    .actions {
+      background: white;
+      border: 1px solid #ccc;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+
+    .actions input,
+    .actions select,
+    .actions button {
+      padding: 8px;
+      margin: 5px;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+    }
+
+    table th,
+    table td {
+      border: 1px solid #ccc;
+      padding: 10px;
+      text-align: left;
+    }
+
+    table th {
+      background: #eee;
+    }
+
+    .pending {
+      color: orange;
+      font-weight: bold;
+    }
+
+    .shipped {
+      color: blue;
+      font-weight: bold;
+    }
+
+    .delivered {
+      color: green;
+      font-weight: bold;
+    }
+
+    #event-log {
+      background: white;
+      border: 1px solid #ccc;
+      padding: 10px;
+      margin-bottom: 20px;
+      max-height: 150px;
+      overflow-y: auto;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Real-Time Orders Dashboard</h1>
+
+<div class="status">
+  Connection: <span id="conn-text">Connecting...</span>
+</div>
+
+<div id="event-log">
+  Waiting for events...
+</div>
+
+<div class="stats">
+  <div class="card">
+    <p>Total</p>
+    <h2 id="st-total">0</h2>
+  </div>
+
+  <div class="card">
+    <p>Pending</p>
+    <h2 id="st-pending">0</h2>
+  </div>
+
+  <div class="card">
+    <p>Shipped</p>
+    <h2 id="st-shipped">0</h2>
+  </div>
+
+  <div class="card">
+    <p>Delivered</p>
+    <h2 id="st-delivered">0</h2>
+  </div>
+</div>
+
+<div class="actions">
+
+  <h3>Insert Order</h3>
+
+  <input id="inp-customer" placeholder="Customer Name" />
+  <input id="inp-product" placeholder="Product Name" />
+
+  <select id="inp-status">
+    <option value="pending">pending</option>
+    <option value="shipped">shipped</option>
+    <option value="delivered">delivered</option>
+  </select>
+
+  <button onclick="insertOrder()">Insert</button>
+
+  <hr><br>
+
+  <h3>Update Order</h3>
+
+  <input id="upd-id" type="number" placeholder="Order ID" />
+
+  <select id="upd-status">
+    <option value="pending">pending</option>
+    <option value="shipped">shipped</option>
+    <option value="delivered">delivered</option>
+  </select>
+
+  <button onclick="updateOrder()">Update</button>
+
+  <br><br>
+
+  <h3>Delete Order</h3>
+
+  <input id="del-id" type="number" placeholder="Order ID" />
+  <button onclick="deleteOrder()">Delete</button>
+
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Customer</th>
+      <th>Product</th>
+      <th>Status</th>
+      <th>Updated At</th>
+    </tr>
+  </thead>
+
+  <tbody id="orders-body">
+    <tr>
+      <td colspan="5">Loading...</td>
+    </tr>
+  </tbody>
+</table>
+
+<script>
+  const orders = {};
+
+  const socket = new SockJS('/ws');
+  const stomp = Stomp.over(socket);
+
+  stomp.debug = null;
+
+  stomp.connect({}, () => {
+
+    document.getElementById('conn-text').innerText = 'Connected';
+
+    stomp.subscribe('/topic/orders', (msg) => {
+      const event = JSON.parse(msg.body);
+      handleEvent(event);
+    });
+
+    loadOrders();
+
+  }, () => {
+    document.getElementById('conn-text').innerText = 'Disconnected';
+  });
+
+  async function loadOrders() {
+
+    const res = await fetch('/api/orders');
+    const list = await res.json();
+
+    list.forEach(o => {
+      orders[o.id] = o;
+    });
+
+    renderTable();
+  }
+
+  function handleEvent(event) {
+
+    const { operation, data } = event;
+
+    logEvent(operation, data);
+
+    if (operation === 'INSERT' || operation === 'UPDATE') {
+      orders[data.id] = data;
+    }
+
+    if (operation === 'DELETE') {
+      delete orders[data.id];
+    }
+
+    renderTable();
+  }
+
+  function renderTable() {
+
+    const tbody = document.getElementById('orders-body');
+
+    const list = Object.values(orders);
+
+    if (list.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="5">No Orders</td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = list.map(o => `
+      <tr>
+        <td>${o.id}</td>
+        <td>${o.customerName}</td>
+        <td>${o.productName}</td>
+        <td class="${o.status}">
+          ${o.status}
+        </td>
+        <td>${o.updatedAt}</td>
+      </tr>
+    `).join('');
+
+    document.getElementById('st-total').innerText =
+      list.length;
+
+    document.getElementById('st-pending').innerText =
+      list.filter(o => o.status === 'pending').length;
+
+    document.getElementById('st-shipped').innerText =
+      list.filter(o => o.status === 'shipped').length;
+
+    document.getElementById('st-delivered').innerText =
+      list.filter(o => o.status === 'delivered').length;
+  }
+
+  function logEvent(op, data) {
+
+    const log = document.getElementById('event-log');
+
+    const div = document.createElement('div');
+
+    div.innerText =
+      `${op} -> Order ID ${data.id} (${data.status})`;
+
+    log.prepend(div);
+  }
+
+  async function insertOrder() {
+
+    await fetch('/api/orders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        customerName:
+          document.getElementById('inp-customer').value,
+
+        productName:
+          document.getElementById('inp-product').value,
+
+        status:
+          document.getElementById('inp-status').value
+      })
+    });
+  }
+
+  async function updateOrder() {
+
+    const id =
+      document.getElementById('upd-id').value;
+
+    await fetch(`/api/orders/${id}/status`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        status:
+          document.getElementById('upd-status').value
+      })
+    });
+  }
+
+  async function deleteOrder() {
+
+    const id =
+      document.getElementById('del-id').value;
+
+    await fetch(`/api/orders/${id}`, {
+      method: 'DELETE'
+    });
+  }
+</script>
+
+</body>
+</html>
